@@ -1,5 +1,4 @@
-# Stage 1: Build
-FROM node:18-alpine AS builder
+FROM node:18
 
 WORKDIR /usr/src/app
 
@@ -9,18 +8,7 @@ RUN npm install
 COPY tsconfig.json .
 COPY src ./src
 
-RUN npm run build
-
-# Stage 2: Production
-FROM node:18-alpine
-
-WORKDIR /usr/src/app
-
-COPY package*.json ./
-RUN npm install --production
-
-COPY --from=builder /usr/src/app/dist ./dist
-
 EXPOSE 3000
 
-CMD [ "npm", "start" ]
+# Using dev mode for debugging the runtime compilation if needed
+CMD [ "npm", "run", "dev" ]

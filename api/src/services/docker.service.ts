@@ -6,7 +6,7 @@ export class DockerService {
     private docker: Docker;
 
     constructor() {
-        this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
+        this.docker = new Docker(); // Auto-detects socket
     }
 
     async generateShellcode(options: ShellcodeRequest): Promise<Buffer> {

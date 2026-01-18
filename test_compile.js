@@ -44,7 +44,9 @@ const req = http.request(options, (res) => {
                     console.log('VALIDATION WARNING: No MZ header detected.');
                 }
             } else {
-                console.log('FAILURE: Invalid response or status code.');
+                console.log(`FAILURE: Invalid response or status code: ${res.statusCode}`);
+                console.log(`BODY: ${JSON.stringify(body, null, 2)}`);
+                require('fs').writeFileSync('last_error.log', JSON.stringify(body, null, 2));
             }
         } catch (e) {
             console.error('FAILURE: Could not parse JSON response:', e);

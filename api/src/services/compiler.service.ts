@@ -6,16 +6,16 @@ export class CompilerService {
     private docker: Docker;
 
     constructor() {
-        this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
+        this.docker = new Docker(); // Auto-detects socket (Windows pipe or Unix socket)
     }
 
     async compile(options: CompileRequest): Promise<string> {
-        const { code, output, flags } = options;
+        const { code, output, flags, arch } = options;
         const isWin = true; // For now assuming we always target windows per user request
 
         // Command construction
-        // nim c -d:mingw --app:gui|console --out:out.exe source.nim
-        let cmd = ['nim', 'c', '-d:mingw'];
+        // nim c -d:mingw --cpu:<arch> --app:gui|console --out:out.exe source.nim
+        let cmd = ['nim', 'c', '-d:mingw', `--cpu:${arch}`];
 
         // Default to release mode for smaller binaries, unless flags override
         cmd.push('-d:release');
@@ -31,9 +31,10 @@ export class CompilerService {
             cmd = cmd.concat(flags);
         }
 
-        const outputFile = output === 'dll' ? '/workspace/payload.dll' : '/workspace/payload.exe';
+        const outputFile = output === 'dll' ? '/tmp/payload.dll' : '/tmp/payload.exe';
         cmd.push(`--out:${outputFile}`);
-        cmd.push('/workspace/source.nim');
+        cmd.push(`--nimcache:/tmp/nimcache`);
+        cmd.push('/tmp/source.nim');
 
         const containerConfig = {
             Image: 'local/nim-worker',
@@ -41,7 +42,8 @@ export class CompilerService {
             // Note: Passing large code via echo arg list is risky. 
             // Better: Create container with OpenStdin, stream code to `cat > source.nim`, then exec compile.
             // Redirect nim output to stderr (> &2) so stdout only contains the base64 output
-            Cmd: ['/bin/sh', '-c', 'cat > /workspace/source.nim && (' + cmd.join(' ') + ' >&2) && base64 ' + outputFile],
+            // Use base64 -w 0 to prevent line wrapping which can corrupt the binary if not decoded properly
+            Cmd: ['/bin/sh', '-c', 'cat > /tmp/source.nim && (' + cmd.join(' ') + ' >&2) && base64 -w 0 ' + outputFile],
             Tty: false,
             OpenStdin: true,
             StdinOnce: true,
@@ -54,7 +56,7 @@ export class CompilerService {
                 ReadonlyRootfs: true,
                 // We need writable workspace.
                 Tmpfs: {
-                    '/workspace': ''
+                    '/tmp': ''
                 }
             },
             User: 'nimuser'

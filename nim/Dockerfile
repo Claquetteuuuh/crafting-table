@@ -1,7 +1,7 @@
 FROM nimlang/nim:2.0.0-alpine
 
-# Install mingw-w64 for cross-compilation to Windows
-RUN apk add --no-cache mingw-w64-gcc
+# Fix specific to some Alpine environments where apk lock persists
+RUN rm -f /lib/apk/db/lock && apk update && apk add --no-cache mingw-w64-gcc
 
 # Create non-root user
 RUN adduser -D -u 1000 -h /home/nimuser nimuser
