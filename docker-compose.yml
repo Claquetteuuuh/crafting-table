@@ -1,0 +1,29 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    container_name: venom-api
+    depends_on:
+      - msf-worker
+
+  msf-worker:
+    build: 
+      context: ./msf
+    image: local/msf-worker
+    # This container does not need to run permanently. 
+    # It just needs to be built so the image exists on the host.
+    # We use a dummy command to exit immediately, but 'up' might restart it.
+    # Better: use 'profiles' to avoid running it, OR let it exit and ignore. 
+    # Using 'entrypoint' to just echo and exit.
+    entrypoint: ["echo", "MSF Image Built"]
+
+  nim-worker:
+    build:
+      context: ./nim
+    image: local/nim-worker
+    entrypoint: ["echo", "Nim Image Built"]
+
+
