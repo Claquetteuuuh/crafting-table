@@ -1,7 +1,13 @@
 import { Request, Response } from 'express';
 import { PayloadRequest } from '../schemas/payload.schema';
+import { PayloadService } from '../services/payload.service';
 
 export class PayloadController {
+    private payloadService: PayloadService;
+
+    constructor() {
+        this.payloadService = new PayloadService();
+    }
 
     generate = async (req: Request, res: Response) => {
         try {
@@ -9,24 +15,17 @@ export class PayloadController {
             const options: PayloadRequest = req.body;
 
             console.log(`[Payload] Received request for malware: ${options.name}`);
-            console.log(`[Payload] Config: Output=${options.output}, Injection=${options.injection_method}, Evasion=${options.syscall_evasion}`);
 
-            // Logic will be implemented here later
-            // const payloadBase64 = ...
+            const sourceCode = this.payloadService.generateSource(options);
 
             res.json({
                 status: 'success',
-                message: 'Configuration validated successfully',
+                message: 'Payload source generated successfully',
                 config_summary: {
                     name: options.name,
                     output: options.output,
-                    injection: options.injection_method,
-                    features: {
-                        anti_sandbox: options.anti_sandbox,
-                        anti_debug: options.anti_debug,
-                        iat_spoofing: options.iat_spoofing.length
-                    }
-                }
+                },
+                source_code: sourceCode // Returning source for verification
             });
 
         } catch (error: any) {

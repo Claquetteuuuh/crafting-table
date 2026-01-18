@@ -11,3 +11,6 @@ WORKDIR /workspace
 RUN chown nimuser:nimuser /workspace
 
 USER nimuser
+
+# Install puppy for HTTP requests
+RUN nimble update && nimble install -y puppy
