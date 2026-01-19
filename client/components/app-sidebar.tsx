@@ -27,9 +27,9 @@ import { usePathname } from "next/navigation"
 // Menu items.
 const items = [
     {
-        title: "Mes Malwares",
+        title: "Usage Légal",
         url: "/",
-        icon: Folder,
+        icon: Shield,
     },
     {
         title: "Shellcode Crafter",
@@ -37,9 +37,9 @@ const items = [
         icon: Zap,
     },
     {
-        title: "Malware Craftor",
+        title: "Malware Crafter",
         url: "/creator",
-        icon: Shield,
+        icon: Zap,
     },
     {
         title: "Configuration API",

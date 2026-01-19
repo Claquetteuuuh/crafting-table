@@ -30,7 +30,6 @@ export class IATController {
             { dll: "kernel32", function_name: "GetFileSize", description: "Gets file size" },
             { dll: "kernel32", function_name: "GetCurrentProcessId", description: "Gets current process ID" },
             { dll: "kernel32", function_name: "GetCurrentThreadId", description: "Gets current thread ID" },
-            { dll: "kernel32", function_name: "GetSystemTime", description: "Gets system time" },
             { dll: "kernel32", function_name: "GetLocalTime", description: "Gets local time" },
             { dll: "kernel32", function_name: "GetComputerNameW", description: "Gets computer name" },
             { dll: "kernel32", function_name: "GetVersionExW", description: "Gets Windows version" },

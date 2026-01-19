@@ -71,7 +71,6 @@ export default function ConfigPage() {
                             </div>
                         </div>
 
-                        <Button className="w-full">Tester la Connexion</Button>
                     </CardContent>
                 </Card>
             </div>

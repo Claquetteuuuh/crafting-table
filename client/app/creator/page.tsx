@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { CodePreviewModal } from '@/components/code-preview-modal';
 import { apiClient } from '@/lib/api';
 import type { PayloadRequest, IATFunction } from '@/lib/types';
+import { PayloadSchema } from '@/lib/schemas/payload.schema';
+import { CompileSchema } from '@/lib/schemas/compile.schema';
 import {
     Shield,
     FileCode,
@@ -109,7 +111,7 @@ export default function CreatorPage() {
         setError('');
 
         try {
-            const payload: PayloadRequest = {
+            const payload = {
                 ...formData,
                 iat_spoofing: selectedIATFunctions,
                 shellcode: useShellcodeUrl ? undefined : formData.shellcode,
@@ -118,7 +120,14 @@ export default function CreatorPage() {
                 export_function_name: formData.output === 'dll' ? formData.export_function_name : undefined,
             };
 
-            const response = await apiClient.generatePayload(payload);
+            // Client-side validation
+            const validationResult = PayloadSchema.safeParse(payload);
+            if (!validationResult.success) {
+                const firstError = validationResult.error.issues[0];
+                throw new Error(`${firstError.path.join('.')}: ${firstError.message}`);
+            }
+
+            const response = await apiClient.generatePayload(validationResult.data);
             setSourceCode(response.source_code);
             setIsModalOpen(true);
         } catch (err: any) {
@@ -133,12 +142,21 @@ export default function CreatorPage() {
         setError('');
 
         try {
-            const response = await apiClient.compileCode({
+            const compileReq = {
                 code: sourceCode,
                 output: formData.output,
-                arch: 'amd64',
+                arch: 'amd64' as const,
                 flags: compilerFlags.split(' ').filter(f => f.trim() !== ''),
-            });
+            };
+
+            // Client-side validation
+            const validationResult = CompileSchema.safeParse(compileReq);
+            if (!validationResult.success) {
+                const firstError = validationResult.error.issues[0];
+                throw new Error(`${firstError.path.join('.')}: ${firstError.message}`);
+            }
+
+            const response = await apiClient.compileCode(validationResult.data);
 
             // Decode base64 and download
             const binaryData = atob(response.binary);

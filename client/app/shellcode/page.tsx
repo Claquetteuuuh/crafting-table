@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { apiClient } from '@/lib/api';
 import type { ShellcodeRequest } from '@/lib/types';
+import { ShellcodeSchema } from '@/lib/schemas/shellcode.schema';
 import { Zap, Copy, Terminal, Loader2, AlertCircle, Download, FileCode, Binary } from "lucide-react"
+import { z } from 'zod';
 
 const TEXT_FORMATS = ['c', 'csharp', 'python', 'perl', 'ruby', 'powershell', 'ps1', 'vbnet', 'js_be', 'js_le', 'java', 'bash', 'hex', 'num', 'vbscript', 'asp', 'aspx', 'jsp'];
 
@@ -43,7 +45,14 @@ export default function ShellcodePage() {
         setIsBinary(false);
 
         try {
-            const response = await apiClient.generateShellcode(formData);
+            // Client-side validation
+            const validationResult = ShellcodeSchema.safeParse(formData);
+            if (!validationResult.success) {
+                const firstError = validationResult.error.issues[0];
+                throw new Error(`${firstError.path.join('.')}: ${firstError.message}`);
+            }
+
+            const response = await apiClient.generateShellcode(validationResult.data);
             const base64 = response.shellcode;
             const format = formData.format || 'raw';
 
