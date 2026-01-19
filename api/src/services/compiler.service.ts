@@ -18,7 +18,12 @@ export class CompilerService {
         let cmd = ['nim', 'c', '-d:mingw', `--cpu:${arch}`];
 
         // Default to release mode for smaller binaries, unless flags override
-        cmd.push('-d:release');
+        // We check if users already specified -d:release
+        const userHasRelease = flags?.some(f => f.includes('-d:release'));
+        if (!userHasRelease) {
+            cmd.push('-d:release');
+        }
+
         if (output === 'dll') {
             cmd.push('--app:lib');
             cmd.push('--nomain');
@@ -30,33 +35,31 @@ export class CompilerService {
             cmd = cmd.concat(flags);
         }
 
+        if (options.gui_mode) {
+            cmd.push('--app:gui');
+        }
+
         const outputFile = output === 'dll' ? '/tmp/payload.dll' : '/tmp/payload.exe';
         cmd.push(`--out:${outputFile}`);
         cmd.push(`--nimcache:/tmp/nimcache`);
         cmd.push('/tmp/source.nim');
 
-        console.log(code)
-        console.log(cmd);
+        console.log(`[Compiler] Executing: ${cmd.join(' ')}`);
+
+        const base64Code = Buffer.from(code).toString('base64');
 
         const containerConfig = {
             Image: 'local/nim-worker',
-            // We start with a shell to orchestrate: echo code > source.nim && compile && base64 output
-            // Note: Passing large code via echo arg list is risky. 
-            // Better: Create container with OpenStdin, stream code to `cat > source.nim`, then exec compile.
-            // Redirect nim output to stderr (> &2) so stdout only contains the base64 output
-            // Use base64 -w 0 to prevent line wrapping which can corrupt the binary if not decoded properly
-            Cmd: ['/bin/sh', '-c', 'cat > /tmp/source.nim && (' + cmd.join(' ') + ' >&2) && base64 -w 0 ' + outputFile],
+            // Use base64 to avoid shell escaping issues and corruption
+            Cmd: ['/bin/sh', '-c', `echo "${base64Code}" | base64 -d > /tmp/source.nim && (` + cmd.join(' ') + ' >&2) && base64 -w 0 ' + outputFile],
             Tty: false,
-            OpenStdin: true,
-            StdinOnce: true,
             AttachStdout: true,
             AttachStderr: true,
             HostConfig: {
-                AutoRemove: false, // We remove manually to ensure we wait for it
+                AutoRemove: false,
                 NetworkMode: 'none',
                 CapDrop: ['ALL'],
                 ReadonlyRootfs: true,
-                // We need writable workspace.
                 Tmpfs: {
                     '/tmp': ''
                 }
@@ -78,24 +81,17 @@ export class CompilerService {
             const errStream = new stream.PassThrough();
             errStream.on('data', (chunk) => errorChunks.push(chunk));
 
-            const streamData = await container.attach({ stream: true, hijack: true, stdin: true, stdout: true, stderr: true });
+            const streamData = await container.attach({ stream: true, stdout: true, stderr: true });
             container.modem.demuxStream(streamData, logStream, errStream);
 
             await container.start();
-
-            // Write code to stdin
-            streamData.write(code);
-            streamData.end();
-
             const result = await container.wait();
 
             if (result.StatusCode !== 0) {
                 const stderrMsg = Buffer.concat(errorChunks).toString('utf8');
-                // If compilation fails, stdout might contain compiler errors too (Nim writes some to stdout?)
                 throw new Error(`Compilation failed with code ${result.StatusCode}. Stderr: ${stderrMsg}`);
             }
 
-            // Return the captured stdout which contains the base64 string
             return Buffer.concat(outputChunks).toString('utf8');
 
         } catch (e) {

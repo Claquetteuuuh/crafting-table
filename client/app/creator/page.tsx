@@ -36,6 +36,7 @@ export default function CreatorPage() {
         anti_debug: [],
         iat_spoofing: [],
         export_function_name: 'DllMain',
+        gui_mode: false,
     });
 
     const [iatFunctions, setIatFunctions] = useState<IATFunction[]>([]);
@@ -118,6 +119,7 @@ export default function CreatorPage() {
                 shellcode_url: useShellcodeUrl ? formData.shellcode_url : undefined,
                 xor_key: useXorKey ? formData.xor_key : undefined,
                 export_function_name: formData.output === 'dll' ? formData.export_function_name : undefined,
+                gui_mode: formData.gui_mode,
             };
 
             // Client-side validation
@@ -147,6 +149,7 @@ export default function CreatorPage() {
                 output: formData.output,
                 arch: 'amd64' as const,
                 flags: compilerFlags.split(' ').filter(f => f.trim() !== ''),
+                gui_mode: formData.gui_mode,
             };
 
             // Client-side validation
@@ -418,6 +421,17 @@ export default function CreatorPage() {
                                         placeholder="-d:release --opt:size --app:gui"
                                     />
                                 </div>
+                                <div className="flex items-center justify-between pt-2">
+                                    <Label className="text-sm font-semibold">GUI Mode</Label>
+                                    <Switch
+                                        checked={formData.gui_mode}
+                                        onCheckedChange={(c) => setFormData({ ...formData, gui_mode: c })}
+                                        className="data-[state=checked]:bg-emerald-500"
+                                    />
+                                </div>
+                                <p className="text-[10px] text-muted-foreground italic">
+                                    Ajoute <code className="text-emerald-500">--app:gui</code> pour masquer la console Windows.
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
