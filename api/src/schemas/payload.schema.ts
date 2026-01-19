@@ -27,7 +27,8 @@ export const PayloadSchema = z.object({
     iat_spoofing: z.array(z.object({
         dll: z.string(),
         function_name: z.string()
-    })).default([])
+    })).default([]),
+    export_function_name: z.string().optional().default('DllMain')
 }).refine(data => {
     // Check mutual exclusivity
     if (data.shellcode && data.shellcode_url) {

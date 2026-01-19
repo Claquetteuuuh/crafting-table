@@ -19,11 +19,12 @@ export class CompilerService {
 
         // Default to release mode for smaller binaries, unless flags override
         cmd.push('-d:release');
-        cmd.push('--opt:size');
-
+        // cmd.push('--opt:size'); // Let's omit opt:size if it conflicts with some flags, but it's usually fine. 
+        // User requested --passL:-static for DLLs
         if (output === 'dll') {
             cmd.push('--app:lib');
             cmd.push('--nomain');
+            cmd.push('--passL:-static');
         }
 
         // Add user flags
@@ -35,6 +36,9 @@ export class CompilerService {
         cmd.push(`--out:${outputFile}`);
         cmd.push(`--nimcache:/tmp/nimcache`);
         cmd.push('/tmp/source.nim');
+
+        console.log(code)
+        console.log(cmd);
 
         const containerConfig = {
             Image: 'local/nim-worker',

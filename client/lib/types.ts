@@ -27,6 +27,7 @@ export interface PayloadRequest {
     anti_sandbox: Array<'cpu_ram' | 'timing' | 'human_behavior'>;
     anti_debug: Array<'is_debugger_present' | 'nt_global_flag'>;
     iat_spoofing: Array<{ dll: string; function_name: string }>;
+    export_function_name?: string;
 }
 
 export interface PayloadResponse {

