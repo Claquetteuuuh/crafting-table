@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { CodePreviewModal } from '@/components/code-preview-modal';
 import { apiClient } from '@/lib/api';
@@ -44,6 +43,7 @@ export default function CreatorPage() {
     const [isCompiling, setIsCompiling] = useState(false);
     const [error, setError] = useState<string>('');
     const [useShellcodeUrl, setUseShellcodeUrl] = useState(true);
+    const [compilerFlags, setCompilerFlags] = useState<string>('-d:release --opt:size');
 
     // Fetch IAT functions on mount
     useEffect(() => {
@@ -121,7 +121,7 @@ export default function CreatorPage() {
                 code: sourceCode,
                 output: formData.output,
                 arch: 'amd64',
-                flags: ['-d:release', '--opt:size'],
+                flags: compilerFlags.split(' ').filter(f => f.trim() !== ''),
             });
 
             // Decode base64 and download
@@ -324,6 +324,19 @@ export default function CreatorPage() {
                                             onCheckedChange={() => handleToggleAntiSandbox('timing')}
                                         />
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t">
+                                <Label className="text-yellow-400 text-xs font-bold uppercase tracking-wider mb-3 block">Compilateur (Flags)</Label>
+                                <div className="space-y-2">
+                                    <Label className="text-muted-foreground text-[10px]">Flags Nim additionnels (séparés par un espace)</Label>
+                                    <Input
+                                        className="font-mono text-xs"
+                                        value={compilerFlags}
+                                        onChange={(e) => setCompilerFlags(e.target.value)}
+                                        placeholder="-d:release --opt:size --app:gui"
+                                    />
                                 </div>
                             </div>
                         </CardContent>
