@@ -255,7 +255,6 @@ proc pebBeingDebugged(): bool {.asmNoStackFrame.}=
         } else if (config.injection_method === 'early_bird') {
             return this.generateEarlyBirdInjection(useHellsGate);
         }
-        // process_hollowing not implemented yet
         return "";
     }
 

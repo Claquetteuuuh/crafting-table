@@ -10,12 +10,9 @@ export const PayloadSchema = z.object({
         'fiber',
         'thread',
         'early_bird',
-        'process_hollowing'
     ]),
     syscall_evasion: z.enum([
         'hells_gate',
-        'unhooking',
-        'halos_gate',
         'none'
     ]),
     anti_sandbox: z.array(z.enum([

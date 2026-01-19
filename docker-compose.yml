@@ -2,10 +2,12 @@ services:
   api:
     build: ./api
     ports:
-      - "3000:3000"
+      - "3001:3001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    container_name: venom-api
+      - ./api:/usr/src/app
+      - /usr/src/app/node_modules
+    container_name: crafting-table-api
     depends_on:
       - msf-worker
 
@@ -27,3 +29,15 @@ services:
     entrypoint: ["echo", "Nim Image Built"]
 
 
+  client:
+    build: ./client
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./client:/usr/src/app
+      - /usr/src/app/node_modules
+    container_name: crafting-table-client
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      - api
