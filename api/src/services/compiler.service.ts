@@ -19,8 +19,6 @@ export class CompilerService {
 
         // Default to release mode for smaller binaries, unless flags override
         cmd.push('-d:release');
-        // cmd.push('--opt:size'); // Let's omit opt:size if it conflicts with some flags, but it's usually fine. 
-        // User requested --passL:-static for DLLs
         if (output === 'dll') {
             cmd.push('--app:lib');
             cmd.push('--nomain');

@@ -47,6 +47,18 @@ export default function CreatorPage() {
     const [useXorKey, setUseXorKey] = useState(false);
     const [compilerFlags, setCompilerFlags] = useState<string>('-d:release --opt:size');
 
+    // Clear features not supported for DLLs (IAT spoofing, Early Bird)
+    useEffect(() => {
+        if (formData.output === 'dll') {
+            if (selectedIATFunctions.length > 0) {
+                setSelectedIATFunctions([]);
+            }
+            if (formData.injection_method === 'early_bird') {
+                setFormData(prev => ({ ...prev, injection_method: 'thread' }));
+            }
+        }
+    }, [formData.output, selectedIATFunctions.length, formData.injection_method]);
+
     // Fetch IAT functions on mount
     useEffect(() => {
         const fetchIATFunctions = async () => {
@@ -296,15 +308,15 @@ export default function CreatorPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {[
+                                {([
                                     { id: 'thread', label: 'Thread Injection', desc: 'CreateRemoteThread simple' },
                                     { id: 'fiber', label: 'Fiber Injection', desc: 'Exécution via fibres légères' },
                                     { id: 'early_bird', label: 'Early Bird', desc: 'Queued APC Injection' },
-                                ].map((method) => (
+                                ] as const).filter(m => formData.output === 'exe' || m.id !== 'early_bird').map((method) => (
                                     <div
                                         key={method.id}
                                         className={`cursor-pointer rounded-lg border p-4 hover:bg-accent transition-all ${formData.injection_method === method.id ? 'border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500' : ''}`}
-                                        onClick={() => setFormData({ ...formData, injection_method: method.id as any })}
+                                        onClick={() => setFormData({ ...formData, injection_method: method.id })}
                                     >
                                         <div className="flex items-center gap-2 mb-1">
                                             <div className={`h-2 w-2 rounded-full ${formData.injection_method === method.id ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
@@ -387,43 +399,45 @@ export default function CreatorPage() {
                     </Card>
 
                     {/* IAT Spoofing */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Layers className="h-5 w-5 text-orange-500" />
-                                IAT Spoofing
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-xs text-muted-foreground mb-4">
-                                Masquer les imports malveillants en incluant des fonctions légitimes.
-                            </p>
-                            <div className="h-[300px] overflow-y-auto pr-2 space-y-4 border rounded-md p-2">
-                                {Object.entries(groupedIATFunctions).map(([dll, functions]) => (
-                                    <div key={dll}>
-                                        <h4 className="font-bold text-xs text-muted-foreground uppercase mb-2 sticky top-0 bg-background py-1">{dll}.dll</h4>
-                                        <div className="space-y-1">
-                                            {functions.map((func) => {
-                                                const isSelected = selectedIATFunctions.some(
-                                                    (f) => f.dll === dll && f.function_name === func.function_name
-                                                );
-                                                return (
-                                                    <div
-                                                        key={func.function_name}
-                                                        className={`text-xs p-2 rounded cursor-pointer flex items-center justify-between ${isSelected ? 'bg-emerald-500/20 text-emerald-500' : 'hover:bg-accent'}`}
-                                                        onClick={() => handleToggleIATFunction(dll, func.function_name)}
-                                                    >
-                                                        <span>{func.function_name}</span>
-                                                        {isSelected && <Badge variant="default" className="h-1.5 w-1.5 p-0 rounded-full" />}
-                                                    </div>
-                                                );
-                                            })}
+                    {formData.output === 'exe' && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Layers className="h-5 w-5 text-orange-500" />
+                                    IAT Spoofing
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-xs text-muted-foreground mb-4">
+                                    Masquer les imports malveillants en incluant des fonctions légitimes.
+                                </p>
+                                <div className="h-[300px] overflow-y-auto pr-2 space-y-4 border rounded-md p-2">
+                                    {Object.entries(groupedIATFunctions).map(([dll, functions]) => (
+                                        <div key={dll}>
+                                            <h4 className="font-bold text-xs text-muted-foreground uppercase mb-2 sticky top-0 bg-background py-1">{dll}.dll</h4>
+                                            <div className="space-y-1">
+                                                {functions.map((func) => {
+                                                    const isSelected = selectedIATFunctions.some(
+                                                        (f) => f.dll === dll && f.function_name === func.function_name
+                                                    );
+                                                    return (
+                                                        <div
+                                                            key={func.function_name}
+                                                            className={`text-xs p-2 rounded cursor-pointer flex items-center justify-between ${isSelected ? 'bg-emerald-500/20 text-emerald-500' : 'hover:bg-accent'}`}
+                                                            onClick={() => handleToggleIATFunction(dll, func.function_name)}
+                                                        >
+                                                            <span>{func.function_name}</span>
+                                                            {isSelected && <Badge variant="default" className="h-1.5 w-1.5 p-0 rounded-full" />}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
 
                 </div>
             </div>
