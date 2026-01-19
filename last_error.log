@@ -1,4 +1,0 @@
-{
-  "error": "Compilation failed",
-  "details": "Compilation failed with code 1. Stderr: Hint: used config file '/nim/config/nim.cfg' [Conf]\nHint: used config file '/nim/config/config.nims' [Conf]\n........................................................................cannot create directory: /home/nimuser/.cache/nim/source_r\n"
-}

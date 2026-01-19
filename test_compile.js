@@ -1,62 +1,110 @@
 const http = require('http');
+const fs = require('fs');
 
-const data = JSON.stringify({
-    code: 'echo "Hello from Nim API!"\n',
-    output: 'exe',
-    flags: ['--app:console']
-});
+// First generate the payload
+const generatePayload = {
+    name: "TestCompile",
+    output: "exe",
+    shellcode: "0xfc,0x48,0x83",
+    xor_key: "0xAA",
+    injection_method: "fiber",
+    syscall_evasion: "none",
+    anti_sandbox: [],
+    anti_debug: ["is_debugger_present"],
+    iat_spoofing: []
+};
 
-const options = {
+const genData = JSON.stringify(generatePayload);
+const genOptions = {
     hostname: 'localhost',
     port: 3000,
-    path: '/compile',
+    path: '/generate-payload',
     method: 'POST',
     headers: {
         'Content-Type': 'application/json',
-        'Content-Length': data.length
+        'Content-Length': genData.length
     }
 };
 
-console.log('Sending request to http://localhost:3000/compile...');
-
-const req = http.request(options, (res) => {
-    console.log(`STATUS: ${res.statusCode}`);
-    
-    let chunks = [];
-    res.on('data', (chunk) => chunks.push(chunk));
-
+console.log('Step 1: Generating payload...');
+const genReq = http.request(genOptions, (res) => {
+    let body = '';
+    res.on('data', chunk => body += chunk);
     res.on('end', () => {
-        const bodyRaw = Buffer.concat(chunks).toString('utf8');
-        console.log(`RESPONSE RAW: ${bodyRaw}`);
-        
         try {
-            const body = JSON.parse(bodyRaw);
-            if (res.statusCode === 200 && body.binary) {
-                const binary = Buffer.from(body.binary, 'base64');
-                console.log(`SUCCESS: Binary generated.`);
-                console.log(`SIZE: ${binary.length} bytes`);
-                console.log(`HEX prefix: ${binary.toString('hex').substring(0, 32)}...`);
-                
-                // Verify MZ header for EXE
-                if (binary.toString('ascii').startsWith('MZ')) {
-                    console.log('VALIDATION: Valid PE header (MZ) detected.');
-                } else {
-                    console.log('VALIDATION WARNING: No MZ header detected.');
-                }
-            } else {
-                console.log(`FAILURE: Invalid response or status code: ${res.statusCode}`);
-                console.log(`BODY: ${JSON.stringify(body, null, 2)}`);
-                require('fs').writeFileSync('last_error.log', JSON.stringify(body, null, 2));
+            const json = JSON.parse(body);
+            if (!json.source_code) {
+                console.error('❌ Generation failed:', json);
+                process.exit(1);
             }
+            
+            console.log('✓ Payload generated');
+            
+            // Now compile it
+            const compilePayload = {
+                source: json.source_code,
+                output: "exe",
+                arch: "amd64"
+            };
+            
+            const compData = JSON.stringify(compilePayload);
+            const compOptions = {
+                hostname: 'localhost',
+                port: 3000,
+                path: '/compile',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': compData.length
+                }
+            };
+            
+            console.log('Step 2: Compiling...');
+            const compReq = http.request(compOptions, (compRes) => {
+                let compBody = '';
+                compRes.on('data', chunk => compBody += chunk);
+                compRes.on('end', () => {
+                    try {
+                        const compJson = JSON.parse(compBody);
+                        if (compJson.error) {
+                            console.error('❌ Compilation failed:', compJson);
+                            process.exit(1);
+                        }
+                        console.log('✓ Compilation successful!');
+                        console.log('✓ Binary size:', compJson.binary.length, 'bytes (base64)');
+                        console.log('✓ Actual size:', Buffer.from(compJson.binary, 'base64').length, 'bytes');
+                        
+                        // Save binary
+                        fs.writeFileSync('compiled_payload.exe', Buffer.from(compJson.binary, 'base64'));
+                        console.log('✓ Saved to: compiled_payload.exe');
+                    } catch (e) {
+                        console.error('❌ Parse error:', e.message);
+                        console.error('Response:', compBody);
+                        process.exit(1);
+                    }
+                });
+            });
+            
+            compReq.on('error', (e) => {
+                console.error('❌ Compile request error:', e.message);
+                process.exit(1);
+            });
+            
+            compReq.write(compData);
+            compReq.end();
+            
         } catch (e) {
-            console.error('FAILURE: Could not parse JSON response:', e);
+            console.error('❌ Parse error:', e.message);
+            console.error('Response:', body);
+            process.exit(1);
         }
     });
 });
 
-req.on('error', (e) => {
-    console.error(`problem with request: ${e.message}`);
+genReq.on('error', (e) => {
+    console.error('❌ Generate request error:', e.message);
+    process.exit(1);
 });
 
-req.write(data);
-req.end();
+genReq.write(genData);
+genReq.end();

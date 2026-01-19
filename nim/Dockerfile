@@ -12,5 +12,5 @@ RUN chown nimuser:nimuser /workspace
 
 USER nimuser
 
-# Install puppy for HTTP requests
-RUN nimble update && nimble install -y puppy
+# Install puppy for HTTP requests and winim for Windows API
+RUN nimble update && nimble install -y puppy winim

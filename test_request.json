@@ -1,0 +1,10 @@
+{
+  "name": "EvasionTest",
+  "output": "exe",
+  "shellcode": "0xfc,0x48,0x83",
+  "xor_key": "0xAA,0xBB",
+  "injection_method": "fiber",
+  "syscall_evasion": "none",
+  "anti_sandbox": ["cpu_ram", "timing"],
+  "anti_debug": ["is_debugger_present"]
+}
