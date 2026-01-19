@@ -55,12 +55,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <Sidebar collapsible="icon" {...props}>
             <SidebarHeader>
                 <div className="flex items-center gap-2 p-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-primary-foreground">
-                        <Shield className="size-4" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden border border-emerald-500/20 bg-emerald-500/5">
+                        <Image
+                            src="/logo.png"
+                            alt="Crafting Table Logo"
+                            width={40}
+                            height={40}
+                            className="object-cover"
+                        />
                     </div>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold">CRAFTBUILD</span>
-                        <span className="truncate text-xs">v1.0.0</span>
+                        <span className="truncate font-bold tracking-wider text-emerald-500">CRAFTING-TABLE</span>
+                        <span className="truncate text-[10px] text-muted-foreground uppercase opacity-70">Security Toolkit v1.0.0</span>
                     </div>
                 </div>
             </SidebarHeader>
