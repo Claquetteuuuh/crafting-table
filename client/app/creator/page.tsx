@@ -377,6 +377,15 @@ export default function CreatorPage() {
                                             className="data-[state=checked]:bg-emerald-500"
                                         />
                                     </div>
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="unhook" className="font-semibold text-sm">Classic Unhooking</Label>
+                                        <Switch
+                                            id="unhook"
+                                            checked={formData.syscall_evasion === 'unhooking_classique'}
+                                            onCheckedChange={(c) => setFormData({ ...formData, syscall_evasion: c ? 'unhooking_classique' : 'none' })}
+                                            className="data-[state=checked]:bg-emerald-500"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
