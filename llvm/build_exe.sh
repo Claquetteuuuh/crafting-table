@@ -5,7 +5,6 @@ NIM_FILE=$1
 PASS_NAME=$2
 
 echo "[1/5] Compilation des Passes LLVM..."
-ls -la /app/llvm-pass
 clang++ -shared -fPIC $(llvm-config --cxxflags) ./llvm-pass/*.cpp -o /app/MyPlugin.so $(llvm-config --ldflags --libs)
 if [ $? -ne 0 ]; then
     echo "Erreur compilation clang++"
