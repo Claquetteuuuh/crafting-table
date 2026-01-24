@@ -37,6 +37,7 @@ export default function CreatorPage() {
         iat_spoofing: [],
         export_function_name: 'DllMain',
         gui_mode: false,
+        use_llvm: false,
     });
 
     const [iatFunctions, setIatFunctions] = useState<IATFunction[]>([]);
@@ -150,6 +151,8 @@ export default function CreatorPage() {
                 arch: 'amd64' as const,
                 flags: compilerFlags.split(' ').filter(f => f.trim() !== ''),
                 gui_mode: formData.gui_mode,
+                use_llvm: formData.use_llvm,
+                llvm_pass: formData.llvm_pass,
             };
 
             // Client-side validation
@@ -441,6 +444,38 @@ export default function CreatorPage() {
                                 <p className="text-[10px] text-muted-foreground italic">
                                     Ajoute <code className="text-emerald-500">--app:gui</code> pour masquer la console Windows.
                                 </p>
+
+                                {/* LLVM Section */}
+                                <div className="pt-4 mt-4 border-t border-white/5 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-sm font-semibold flex items-center gap-2">
+                                                LLVM Obfuscation
+                                                <Badge variant="outline" className="text-[10px] py-0 border-emerald-500/20 text-emerald-500">Experimental</Badge>
+                                            </Label>
+                                            <p className="text-[10px] text-muted-foreground">Compilation via Clang + Passes LLVM custom</p>
+                                        </div>
+                                        <Switch
+                                            checked={formData.use_llvm}
+                                            onCheckedChange={(c) => setFormData({ ...formData, use_llvm: c })}
+                                            className="data-[state=checked]:bg-emerald-500"
+                                        />
+                                    </div>
+
+                                    {formData.use_llvm && (
+                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                                            <Label className="text-xs">Obfuscation Pass</Label>
+                                            <select
+                                                className="w-full bg-background/50 border border-white/5 rounded-md p-2 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
+                                                value={formData.llvm_pass || 'shuffle-strings'}
+                                                onChange={(e) => setFormData({ ...formData, llvm_pass: e.target.value as any })}
+                                            >
+                                                <option value="shuffle-strings">Shuffle Strings (String Encryption)</option>
+                                                <option value="replace-null-by-prime-formula">Replace Null by Prime (Control Flow)</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </CardContent>
                     </Card>

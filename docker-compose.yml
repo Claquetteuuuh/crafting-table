@@ -28,6 +28,13 @@ services:
     image: local/nim-worker
     entrypoint: ["echo", "Nim Image Built"]
 
+  nim-llvm-builder:
+    build:
+      context: .
+      dockerfile: llvm/Dockerfile
+    image: local/nim-llvm-builder
+    entrypoint: ["echo", "Nim LLVM Image Built"]
+
 
   client:
     build: ./client

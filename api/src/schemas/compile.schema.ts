@@ -5,7 +5,9 @@ export const CompileSchema = z.object({
     output: z.enum(['exe', 'dll']),
     arch: z.enum(['amd64', 'i386', 'arm64']).optional().default('amd64'),
     flags: z.array(z.string()).optional().default([]),
-    gui_mode: z.boolean().optional().default(false)
+    gui_mode: z.boolean().optional().default(false),
+    use_llvm: z.boolean().optional().default(false),
+    llvm_pass: z.string().optional()
 });
 
 export type CompileRequest = z.infer<typeof CompileSchema>;

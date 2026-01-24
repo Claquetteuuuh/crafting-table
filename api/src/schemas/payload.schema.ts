@@ -30,7 +30,9 @@ export const PayloadSchema = z.object({
         function_name: z.string()
     })).default([]),
     export_function_name: z.string().optional().default('DllMain'),
-    gui_mode: z.boolean().optional().default(false)
+    gui_mode: z.boolean().optional().default(false),
+    use_llvm: z.boolean().optional().default(false),
+    llvm_pass: z.enum(['shuffle-strings', 'replace-null-by-prime-formula']).optional()
 }).refine(data => {
     // Check mutual exclusivity
     if (data.shellcode && data.shellcode_url) {
